@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" type="text/css" href="/static/css/common.css">
+    <title>Re:Sprng 피트니스 출입 프로그램</title>
+    <style>
+        #video {
+            width: 640px;
+            height: 480px;
+            margin-top: 50px;
+        }
+
+        #video_container {
+            display: flex;
+            justify-content: center;
+        }
+
+        #attendard{
+            text-align: center;
+            margin-top: 50px;
+        }
+
+        #attendard #recognizeButton{
+            margin: 0 20px 0 20px;
+            padding: 10px 20px;
+            color : #03430c;
+            background-color : #ffffff;
+            border : solid 1px #03430c;
+            text-align: center;
+        }
+
+        #attendard #recognizeButton:hover{
+            text-shadow: 0 0 0 #ffffff;
+            background-color : #03430c;
+            color : #ffffff;
+        }
+    </style>
+</head>
+<body>
+    <a href="/" class="main_title">Re:Spring 피트니스🌷</a>
+    
+    <div id="video_container">
+        <video id="video" autoplay></video>
+        <br>
+    </div>
+    
+    <div id="attendard">
+        <!-- 얼굴 인식 버튼 -->
+        <button id="recognizeButton">출석하기</button>
+        <br>
+    </div>
+    
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/face-api.js/2.3.0/face-api.min.js"></script>
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const registerButton = document.getElementById('registerButton');
+        const recognizeButton = document.getElementById('recognizeButton');
+
+        async function detectAndAlertMultipleFaces() {
+            const context = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            const detections = await faceapi.detectAllFaces(canvas);
+            
+            if (detections.length > 1) {
+                alert("여러 사람이 감지되었습니다. 한 사람만 나오게 해주세요");
+                return false;
+            }
+            return true;
+        }
+
+
+        function recognizeFace() {
+            const context = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // Canvas에서 Blob으로 이미지 데이터를 변환
+            canvas.toBlob(function(blob) {
+                const formData = new FormData();
+                formData.append('file', blob, 'face.jpg'); // Blob을 FormData에 추가
+
+                // FormData를 사용하여 서버에 POST 요청
+                fetch('/recognize', {
+                    method: 'POST',
+                    body: formData,
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert(data.message);
+                    } else {
+                        alert(data.message);
+                    }
+                })
+                .catch(error => console.error('Error recognizing face:', error));
+            }, 'image/jpeg');
+        }
+
+        // 웹캠에서 비디오 스트림 받아오기
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then((stream) => {
+                video.srcObject = stream;
+            })
+            .catch((err) => {
+                console.error("Error accessing webcam:", err);
+            });
+
+
+        // 얼굴 인식 버튼 클릭 이벤트
+        recognizeButton.addEventListener('click', () => {
+            if (detectAndAlertMultipleFaces()) {
+                recognizeFace();
+            }
+        });
+    </script>
+</body>
+</html>
