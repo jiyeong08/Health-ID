@@ -26,10 +26,8 @@ import models
 import random
 import string
 from datetime import datetime
-
 # models에 정의한 모든 클래스, 연결한 DB엔진에 테이블로 생성
 models.Base.metadata.create_all(bind=engine)
-
 # Dependency Injection(의존성 주입을 위한 함수)
 # yield : FastAPI가 함수 실행을 일시 중지하고 DB 세션을 호출자에게 반환하도록 지시
 def get_db():
@@ -45,14 +43,6 @@ faceapp = FaceAnalysis()
 
 # 정적 파일을 호스팅하기 위한 디렉토리 설정
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# 얼굴 등록을 위한 전역 변수
-registered_face_encoding = None
-registered_face_filename = None  # 이미 등록된 얼굴의 파일 이름
-
-# 얼굴 분석 모델 초기화
-face_analyzer = FaceAnalysis(providers=['CPUExecutionProvider'])
-face_analyzer.prepare(ctx_id=0, det_size=(640, 640))
 
 # 파일에 얼굴 데이터 저장
 def save_faces():
@@ -105,19 +95,23 @@ class FaceModel:
 # InsightFace 얼굴 모델 초기화
 model = FaceModel()
 
+# # InsightFace 얼굴 모델 초기화
+# # CPU 모드를 위해 ctx_id=-1
+# model = faceapp.prepare(ctx_id=-1)
+
 @app.get("/", response_class=HTMLResponse)
 async def get_index():
-    with open("templates/home.html", "r", encoding="utf-8") as f:
+    with open("templates/index3.html", "r", encoding="utf-8") as f:
         html_content = f.read()
     return HTMLResponse(content=html_content, status_code=200)
 
-@app.get("/register", response_class=HTMLResponse)
+@app.get("/regist", response_class=HTMLResponse)
 async def get_regist_html(request: Request):
     with open("templates/regist.html", "r", encoding="utf-8") as f:
         html_content = f.read()
     return HTMLResponse(content=html_content, status_code=200)
 
-@app.get("/attend", response_class=HTMLResponse)
+@app.get("/enterexit", response_class=HTMLResponse)
 async def get_regist_html(request: Request):
     with open("templates/enterexit.html", "r", encoding="utf-8") as f:
         html_content = f.read()
@@ -129,42 +123,27 @@ templates = Jinja2Templates(directory="templates")
 # 얼굴 등록 엔드포인트
 @app.post("/register_face", response_class=HTMLResponse)
 async def register_face(request: Request, image: UploadFile = File(...), user_name: str = Form(...)):
-    global registered_face_encoding, registered_face_filename
     image_bytes = await image.read()
-    # image_data = await asyncio.to_thread(decode_image, image_bytes)
-
+    image_data = await asyncio.to_thread(decode_image, image_bytes)
+    
     # 이미지를 NumPy 배열로 디코딩
     nparr = np.frombuffer(image_bytes, np.uint8)
     face_image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-    
-
     if face_image is None:
         return {"error": "이미지를 디코딩하는 데 실패했습니다."}
-    
+
     try:
         # 얼굴 임베딩 추출
         face_embedding = model.get_embedding(face_image)
-         
-        for registered_user_name, registered_data in registered_faces.items():
-            registered_embedding = registered_data["embedding"]
-            # 파일 존재 여부 확인(얼굴파일 직접 삭제 시 json에는 정보 남아있는 문제때문에)
-            image_path = f"static/images/{user_name}.jpg"
-            if not os.path.exists(image_path):  # 파일이 존재하지 않으면 이 사용자는 무시
-                continue
-            # 거리 계산
-            distance = np.linalg.norm(registered_embedding - face_embedding)
-            if distance < 0.3:  # 임계값 설정, 필요에 따라 조정 가능
-                return HTMLResponse(content="이미 등록된 사용자입니다.")
     except ValueError as e:
         # 여러 얼굴이 감지된 경우 처리
-        sound2=pyglet.resource.media('static/sounds/bad.mp3',streaming=True)
+        sound2=pyglet.resource.media('static/sounds/bad.wav',streaming=True)
         sound2.play()
         return HTMLResponse(content="다수의 인물이 인식되었습니다. 1명의 얼굴만 인식해 주세요.")
 
     try:
         # 사용자 ID를 추출하거나 입력받아서 등록
-        # 새 얼굴 등록 로직
         registered_faces[user_name] = {"embedding": face_embedding, "image_data": image_bytes}
         save_faces()  # 변경사항을 파일에 저장
         image_to_save = Image.fromarray(cv2.cvtColor(face_image, cv2.COLOR_BGR2RGB))
@@ -189,12 +168,12 @@ async def register_face(request: Request, image: UploadFile = File(...), user_na
         db.commit()
         db.close()
 
-        sound1=pyglet.resource.media('static/sounds/hello1.mp3',streaming=True)
+        sound1=pyglet.resource.media('static/sounds/good.wav',streaming=True)
         sound1.play()
         # 등록 성공 메시지 반환
         return HTMLResponse(content=f"{user_name[:-4]}님의 이미지가 등록되었습니다!")
     except ValueError as e:
-        sound2=pyglet.resource.media('static/sounds/bad.mp3',streaming=True)
+        sound2=pyglet.resource.media('static/sounds/bad.wav',streaming=True)
         sound2.play()
         return HTMLResponse(content="에러가 발생했습니다. 다시 등록해 주세요.")
 
@@ -217,10 +196,9 @@ async def recognize_face(image: UploadFile, action: str = Form(...)):
         unknown_face_embedding = model.get_embedding(unknown_face_image)
     except ValueError as e:
         # 여러 얼굴이 감지된 경우 처리
-        sound2=pyglet.resource.media('static/sounds/bad.mp3',streaming=True)
+        sound2=pyglet.resource.media('static/sounds/bad.wav',streaming=True)
         sound2.play()
-        content="다수의 인물이 인식되었습니다. 본인의 얼굴만 인식해 주세요."
-        return JSONResponse({"success":False, "message" : content})
+        return HTMLResponse(content="다수의 인물이 인식되었습니다. 본인의 얼굴만 인식해 주세요.")
 
     # 등록된 사용자들의 얼굴과 비교
     recognized_users = []
@@ -237,7 +215,7 @@ async def recognize_face(image: UploadFile, action: str = Form(...)):
         distance = np.linalg.norm(registered_face_embedding - unknown_face_embedding)
 
         # 임계값 (거리가 얼마 이하면 출입 허용으로 판단할지 조절 가능)
-        threshold = 0.35
+        threshold = 0.3
 
         # 거리가 임계값 이하인 경우 출입 허용
         if distance < threshold:
@@ -260,10 +238,9 @@ async def recognize_face(image: UploadFile, action: str = Form(...)):
             db.commit()
             db.close()
 
-            sound1=pyglet.resource.media('static/sounds/hello1.mp3',streaming=True)
+            sound1=pyglet.resource.media('static/sounds/tada1.mp3',streaming=True)
             sound1.play()
-            content=f"입실({current_time}) : 반갑습니다, {name}님!"
-            return JSONResponse({"success":True,"message" : content})
+            return HTMLResponse(content=f"입실({current_time}) : 반갑습니다, {name}님!")
         elif action == "exit":
 
             # 현재 날짜와 시간 가져오기
@@ -278,16 +255,14 @@ async def recognize_face(image: UploadFile, action: str = Form(...)):
             db.commit()
             db.close()
 
-            sound1=pyglet.resource.media('static/sounds/bad.mp3',streaming=True)
+            sound1=pyglet.resource.media('static/sounds/bye2.mp3',streaming=True)
             sound1.play()
-            content=f"퇴실({current_time}) : {name}님, 다음에 또 봐요!"
-            return JSONResponse({"success":True,"message" : content})
+            return HTMLResponse(content=f"퇴실({current_time}) : {name}님, 다음에 또 봐요!")
     else:
         # return {"message": "등록되지 않은 사용자입니다."}
-        sound2=pyglet.resource.media('static/sounds/bad.mp3',streaming=True)
+        sound2=pyglet.resource.media('static/sounds/bad.wav',streaming=True)
         sound2.play()
-        content="등록되지 않은 사용자입니다. 얼굴을 다시 인식해 주세요."
-        return JSONResponse({"success" : False, "message" : content})
+        return HTMLResponse(content="등록되지 않은 사용자입니다. 얼굴을 다시 인식해 주세요.")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)
